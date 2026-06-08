@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Bucharest Weather</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      const storedTheme = localStorage.getItem("weather-theme");
+      if (storedTheme === "light" || storedTheme === "dark") {
+        document.documentElement.dataset.theme = storedTheme;
+      }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Bucharest, Romania</p>
+        <h1>Weather Now</h1>
+      </div>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light theme">
+        <span class="theme-toggle__icon" aria-hidden="true"></span>
+        <span id="theme-toggle-label">Dark</span>
+      </button>
+    </header>
+
+    <main class="dashboard">
+      <section class="current-panel" aria-labelledby="current-heading">
+        <div>
+          <p class="section-label" id="current-heading">Current Conditions</p>
+          <p class="updated-status" id="updated-status">Loading weather data...</p>
+        </div>
+        <div class="current-metrics">
+          <article class="metric-tile" aria-live="polite">
+            <span class="metric-tile__label">Temperature</span>
+            <strong class="metric-tile__value" id="current-temp">--</strong>
+          </article>
+          <article class="metric-tile" aria-live="polite">
+            <span class="metric-tile__label">UV Index</span>
+            <strong class="metric-tile__value" id="current-uv">--</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="charts-grid" aria-label="Hourly weather charts">
+        <article class="chart-panel">
+          <div class="chart-panel__header">
+            <div>
+              <p class="section-label">Hourly Temperature</p>
+              <h2>Temperature</h2>
+            </div>
+            <span class="chart-unit">Celsius</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="temperature-chart" aria-label="Hourly temperature chart" role="img"></canvas>
+          </div>
+        </article>
+
+        <article class="chart-panel">
+          <div class="chart-panel__header">
+            <div>
+              <p class="section-label">Hourly UV</p>
+              <h2>UV Index</h2>
+            </div>
+            <span class="chart-unit">0-11+</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="uv-chart" aria-label="Hourly UV index chart" role="img"></canvas>
+          </div>
+        </article>
+      </section>
+
+      <section class="attribution" aria-label="Weather attribution">
+        <a id="weather-source-link" href="https://open-meteo.com/" rel="noopener noreferrer">
+          Weather data by Open-Meteo
+        </a>
+      </section>
+    </main>
+
+    <dialog class="point-dialog" id="point-dialog">
+      <form method="dialog" class="point-dialog__content">
+        <button class="dialog-close" type="submit" aria-label="Close">x</button>
+        <p class="section-label" id="dialog-metric">Weather point</p>
+        <strong id="dialog-value">--</strong>
+        <span id="dialog-time">--</span>
+      </form>
+    </dialog>
+  </body>
+</html>
