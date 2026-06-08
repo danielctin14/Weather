@@ -52,7 +52,10 @@
               <p class="section-label">Hourly Temperature</p>
               <h2>Temperature</h2>
             </div>
-            <span class="chart-unit">Celsius</span>
+            <div class="chart-readout" aria-live="polite">
+              <span id="temperature-readout-time">--</span>
+              <strong id="temperature-readout-value">--</strong>
+            </div>
           </div>
           <div class="chart-wrap">
             <canvas id="temperature-chart" aria-label="Hourly temperature chart" role="img"></canvas>
@@ -65,7 +68,10 @@
               <p class="section-label">Hourly UV</p>
               <h2>UV Index</h2>
             </div>
-            <span class="chart-unit">0-11+</span>
+            <div class="chart-readout" aria-live="polite">
+              <span id="uv-readout-time">--</span>
+              <strong id="uv-readout-value">--</strong>
+            </div>
           </div>
           <div class="chart-wrap">
             <canvas id="uv-chart" aria-label="Hourly UV index chart" role="img"></canvas>
@@ -80,13 +86,5 @@
       </section>
     </main>
 
-    <dialog class="point-dialog" id="point-dialog">
-      <form method="dialog" class="point-dialog__content">
-        <button class="dialog-close" type="submit" aria-label="Close">x</button>
-        <p class="section-label" id="dialog-metric">Weather point</p>
-        <strong id="dialog-value">--</strong>
-        <span id="dialog-time">--</span>
-      </form>
-    </dialog>
   </body>
 </html>

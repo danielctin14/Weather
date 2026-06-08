@@ -18,6 +18,7 @@ WEATHER_URL.search = new URLSearchParams({
 const state = {
   weather: null,
   charts: [],
+  chartMeta: new Map(),
 };
 
 const els = {
@@ -27,13 +28,9 @@ const els = {
   themeToggle: document.getElementById("theme-toggle"),
   themeToggleLabel: document.getElementById("theme-toggle-label"),
   weatherSourceLink: document.getElementById("weather-source-link"),
-  dialog: document.getElementById("point-dialog"),
-  dialogMetric: document.getElementById("dialog-metric"),
-  dialogValue: document.getElementById("dialog-value"),
-  dialogTime: document.getElementById("dialog-time"),
 };
 
-const formatLongDate = new Intl.DateTimeFormat("en-GB", {
+const formatReadoutTime = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
   weekday: "short",
   day: "2-digit",
@@ -41,6 +38,48 @@ const formatLongDate = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
   minute: "2-digit",
 });
+
+const COLOR_BANDS = {
+  temperature: [
+    { max: 20.999, line: "#38a6f8", fill: "rgba(56, 166, 248, 0.22)" },
+    { max: 23.999, line: "#31b871", fill: "rgba(49, 184, 113, 0.22)" },
+    { max: 27.999, line: "#f2c94c", fill: "rgba(242, 201, 76, 0.24)" },
+    { max: 30.999, line: "#f2994a", fill: "rgba(242, 153, 74, 0.25)" },
+    { max: Infinity, line: "#eb5757", fill: "rgba(235, 87, 87, 0.26)" },
+  ],
+  uvIndex: [
+    { max: 2.999, line: "#31b871", fill: "rgba(49, 184, 113, 0.23)" },
+    { max: 5.999, line: "#f2c94c", fill: "rgba(242, 201, 76, 0.25)" },
+    { max: 7.999, line: "#f2994a", fill: "rgba(242, 153, 74, 0.26)" },
+    { max: Infinity, line: "#eb5757", fill: "rgba(235, 87, 87, 0.28)" },
+  ],
+};
+
+const guideLinePlugin = {
+  id: "guideLine",
+  afterDatasetsDraw(chart) {
+    const index = chart.$activeIndex;
+    if (!Number.isInteger(index) || index < 0) {
+      return;
+    }
+
+    const { ctx, chartArea, scales } = chart;
+    const x = scales.x.getPixelForValue(index);
+    if (!Number.isFinite(x)) {
+      return;
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = cssVar("--text");
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
 
 const formatUpdated = new Intl.DateTimeFormat("en-GB", {
   timeZone: TIME_ZONE,
@@ -82,7 +121,7 @@ function roundedUv(value) {
   if (!Number.isFinite(value)) {
     return "--";
   }
-  return String(Math.round(value));
+  return value.toFixed(1);
 }
 
 function setStatus(message, isError = false) {
@@ -210,19 +249,169 @@ function destroyCharts() {
     chart.destroy();
   }
   state.charts = [];
+  state.chartMeta.clear();
 }
 
-function openPointDialog(metric, value, isoTime, suffix) {
-  els.dialogMetric.textContent = metric;
-  els.dialogValue.textContent = suffix ? `${value} ${suffix}` : String(value);
+function formatPointTime(isoTime) {
   const date = parseOpenMeteoLocalTime(isoTime);
-  els.dialogTime.textContent = date ? formatLongDate.format(date) : isoTime;
+  return date ? formatReadoutTime.format(date) : isoTime;
+}
 
-  if (typeof els.dialog.showModal === "function") {
-    els.dialog.showModal();
-  } else {
-    els.dialog.setAttribute("open", "");
+function formatMetricValue(value, config) {
+  if (!Number.isFinite(value)) {
+    return "--";
   }
+  const rounded = config.key === "temperature"
+    ? Math.round(value * 10) / 10
+    : value.toFixed(1);
+  return config.suffix ? `${rounded} ${config.suffix}` : String(rounded);
+}
+
+function bandForValue(value, key, colorType = "line") {
+  const bands = COLOR_BANDS[key] || [];
+  const band = bands.find((entry) => value <= entry.max) || bands.at(-1);
+  return band ? band[colorType] : cssVar("--accent");
+}
+
+function segmentColor(config) {
+  return (context) => {
+    const first = context.p0.parsed.y;
+    const second = context.p1.parsed.y;
+    const value = Number.isFinite(first) && Number.isFinite(second)
+      ? (first + second) / 2
+      : first;
+    return bandForValue(value, config.key);
+  };
+}
+
+function createBandGradient(context, config) {
+  const chart = context.chart;
+  const { chartArea, scales } = chart;
+  if (!chartArea) {
+    return bandForValue(0, config.key, "fill");
+  }
+
+  const gradient = chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  const bands = COLOR_BANDS[config.key] || [];
+  const min = scales.y.min;
+  const max = scales.y.max;
+  const range = max - min || 1;
+
+  const stops = [
+    { value: max, color: bandForValue(max, config.key, "fill") },
+    ...bands
+      .filter((band) => Number.isFinite(band.max) && band.max > min && band.max < max)
+      .flatMap((band) => [
+        { value: band.max + 0.001, color: bandForValue(band.max + 0.001, config.key, "fill") },
+        { value: band.max, color: band.fill },
+      ]),
+    { value: min, color: bandForValue(min, config.key, "fill") },
+  ];
+
+  stops
+    .sort((a, b) => b.value - a.value)
+    .forEach((stop) => {
+      const offset = Math.min(1, Math.max(0, (max - stop.value) / range));
+      gradient.addColorStop(offset, stop.color);
+    });
+
+  return gradient;
+}
+
+function nearestIndexForCurrent(hourly, currentTime) {
+  const target = parseOpenMeteoLocalTime(currentTime)?.getTime();
+  if (!Number.isFinite(target)) {
+    return 0;
+  }
+
+  let nearest = 0;
+  let nearestDistance = Infinity;
+  hourly.forEach((hour, index) => {
+    const time = parseOpenMeteoLocalTime(hour.forecastStart)?.getTime();
+    if (!Number.isFinite(time)) {
+      return;
+    }
+    const distance = Math.abs(time - target);
+    if (distance < nearestDistance) {
+      nearest = index;
+      nearestDistance = distance;
+    }
+  });
+  return nearest;
+}
+
+function updateReadout(chart, index) {
+  const meta = state.chartMeta.get(chart);
+  if (!meta) {
+    return;
+  }
+
+  const clampedIndex = Math.min(Math.max(index, 0), meta.hourly.length - 1);
+  const point = meta.hourly[clampedIndex];
+  meta.timeEl.textContent = formatPointTime(point.forecastStart);
+  meta.valueEl.textContent = formatMetricValue(point[meta.config.key], meta.config);
+  chart.$activeIndex = clampedIndex;
+  chart.update("none");
+}
+
+function resetReadout(chart) {
+  const meta = state.chartMeta.get(chart);
+  if (!meta) {
+    return;
+  }
+  updateReadout(chart, meta.defaultIndex);
+}
+
+function indexFromPointer(chart, clientX) {
+  const x = clientX - chart.canvas.getBoundingClientRect().left;
+  const rawIndex = chart.scales.x.getValueForPixel(x);
+  const index = Math.round(Number(rawIndex));
+  if (!Number.isFinite(index)) {
+    return null;
+  }
+  return Math.min(Math.max(index, 0), chart.data.labels.length - 1);
+}
+
+function wireChartPointerEvents(chart) {
+  let dragging = false;
+
+  chart.canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "mouse" && !dragging) {
+      return;
+    }
+    const index = indexFromPointer(chart, event.clientX);
+    if (index !== null) {
+      updateReadout(chart, index);
+    }
+  });
+
+  chart.canvas.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    chart.canvas.setPointerCapture(event.pointerId);
+    const index = indexFromPointer(chart, event.clientX);
+    if (index !== null) {
+      updateReadout(chart, index);
+    }
+  });
+
+  chart.canvas.addEventListener("pointerup", (event) => {
+    dragging = false;
+    if (chart.canvas.hasPointerCapture(event.pointerId)) {
+      chart.canvas.releasePointerCapture(event.pointerId);
+    }
+    resetReadout(chart);
+  });
+
+  chart.canvas.addEventListener("pointercancel", () => {
+    dragging = false;
+    resetReadout(chart);
+  });
+
+  chart.canvas.addEventListener("pointerleave", () => {
+    if (!dragging) {
+      resetReadout(chart);
+    }
+  });
 }
 
 function buildChart(canvasId, hourly, config) {
@@ -242,14 +431,21 @@ function buildChart(canvasId, hourly, config) {
       datasets: [
         {
           data: values,
-          borderColor: config.color,
-          backgroundColor: config.fill,
+          borderColor: bandForValue(0, config.key),
+          backgroundColor(context) {
+            return createBandGradient(context, config);
+          },
           borderWidth: 3,
           pointRadius: 3,
           pointHoverRadius: 6,
           pointBackgroundColor: cssVar("--surface"),
-          pointBorderColor: config.color,
+          pointBorderColor(context) {
+            return bandForValue(context.parsed?.y ?? 0, config.key);
+          },
           pointBorderWidth: 2,
+          segment: {
+            borderColor: segmentColor(config),
+          },
           tension: 0.28,
           fill: true,
         },
@@ -259,33 +455,9 @@ function buildChart(canvasId, hourly, config) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: {
-        mode: "nearest",
+        axis: "x",
+        mode: "index",
         intersect: false,
-      },
-      onClick(event, _elements, chart) {
-        const points = chart.getElementsAtEventForMode(
-          event,
-          "nearest",
-          { intersect: false },
-          true,
-        );
-        if (!points.length) {
-          return;
-        }
-        const index = points[0].index;
-        const source = hourly[index];
-        const rawValue = source[config.key];
-        const value = Number.isFinite(rawValue)
-          ? config.key === "temperature"
-            ? Math.round(rawValue * 10) / 10
-            : Math.round(rawValue)
-          : "--";
-        openPointDialog(
-          config.label,
-          value,
-          source.forecastStart,
-          value === "--" ? "" : config.suffix,
-        );
       },
       scales: {
         x: {
@@ -329,28 +501,46 @@ function buildChart(canvasId, hourly, config) {
 
 function renderCharts(hourly) {
   destroyCharts();
-  state.charts = [
-    buildChart("temperature-chart", hourly, {
+  const defaultIndex = nearestIndexForCurrent(hourly, state.weather?.current?.asOf);
+  const chartConfigs = [
+    {
+      canvasId: "temperature-chart",
       key: "temperature",
       label: "Temperature",
       suffix: "C",
-      color: cssVar("--accent"),
-      fill: "rgba(98, 214, 196, 0.16)",
+      timeEl: document.getElementById("temperature-readout-time"),
+      valueEl: document.getElementById("temperature-readout-value"),
       beginAtZero: false,
-    }),
-    buildChart("uv-chart", hourly, {
+    },
+    {
+      canvasId: "uv-chart",
       key: "uvIndex",
       label: "UV Index",
       suffix: "",
-      color: cssVar("--warm"),
-      fill: "rgba(246, 184, 75, 0.18)",
+      timeEl: document.getElementById("uv-readout-time"),
+      valueEl: document.getElementById("uv-readout-value"),
       beginAtZero: true,
       suggestedMax: 11,
-    }),
+    },
   ];
+
+  state.charts = chartConfigs.map((config) => {
+    const chart = buildChart(config.canvasId, hourly, config);
+    state.chartMeta.set(chart, {
+      config,
+      defaultIndex,
+      hourly,
+      timeEl: config.timeEl,
+      valueEl: config.valueEl,
+    });
+    updateReadout(chart, defaultIndex);
+    wireChartPointerEvents(chart);
+    return chart;
+  });
 }
 
 async function init() {
+  Chart.register(guideLinePlugin);
   setTheme(activeTheme());
   applyAttribution();
   els.themeToggle.addEventListener("click", () => {

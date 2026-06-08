@@ -4,6 +4,8 @@ A small GitHub Pages dashboard for Bucharest, Romania. It shows current temperat
 
 The public site is fully static and fetches weather data directly from Open-Meteo in the browser. No API key, GitHub secret, Apple Developer account, or server-side proxy is required.
 
+Each chart highlights the current hour with a vertical guide line. Hover with a mouse or drag on touch screens to inspect another hour; touch inspection resets to the current hour when released.
+
 ## Local Preview
 
 Start a local server:
