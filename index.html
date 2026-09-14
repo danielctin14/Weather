@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>Bucharest Weather</title>
+    <title>Weather Dashboard</title>
     <link rel="stylesheet" href="styles.css" />
     <script>
       const storedTheme = localStorage.getItem("weather-theme");
@@ -17,14 +17,34 @@
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <p class="eyebrow">Bucharest, Romania</p>
+      <div class="header-title">
+        <p class="eyebrow" id="selected-location-name">Bucharest, Romania</p>
         <h1>Weather Now</h1>
       </div>
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light theme">
+      <div class="header-actions">
+        <div class="location-picker" id="location-picker">
+          <button class="location-trigger" id="location-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="location-popover">
+            Change location
+          </button>
+          <div class="location-popover" id="location-popover" role="dialog" aria-label="Choose a location" hidden>
+            <label class="location-label" for="location-search">Search for a city or place</label>
+            <input id="location-search" class="location-search" type="search" role="combobox" autocomplete="off" aria-autocomplete="list" aria-controls="location-results" aria-expanded="false" aria-activedescendant="" />
+            <p class="picker-status" id="search-status" role="status" aria-live="polite">Type at least 2 characters to search.</p>
+            <div class="picker-section-label">Always available</div>
+            <button class="location-option permanent-location" id="bucharest-option" type="button">Bucharest, Romania</button>
+            <div class="picker-section-label">Search results</div>
+            <div class="location-results" id="location-results" role="listbox" aria-label="Location search results"></div>
+            <button class="device-location" id="device-location" type="button">Use my location</button>
+            <div id="device-suggestion" class="device-suggestion" hidden></div>
+            <p class="picker-status" id="geolocation-status" role="status" aria-live="polite"></p>
+            <p class="picker-status selection-status" id="selection-status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light theme">
         <span class="theme-toggle__icon" aria-hidden="true"></span>
         <span id="theme-toggle-label">Dark</span>
-      </button>
+        </button>
+      </div>
     </header>
 
     <main class="dashboard">
